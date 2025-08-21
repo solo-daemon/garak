@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from garak import _config
 from garak.generators import Generator
 
-from browser_use import Agent
+from browser_use import Agent, Controller
 from browser_use.llm import ChatGoogle, ChatOpenAI
 from playwright.async_api import async_playwright
 
@@ -52,10 +52,13 @@ class BrowserUseGenerator(Generator):
         "parallel_requests": 4,  # cap concurrent tabs per prompt
         # Task template for the agent. {prompt} is substituted.
         "task_template": (
-            "1. Enter the text: \"{prompt}\"\n"
-            "2. Wait until the full response is visible\n"
-            "3. Store the response\n"
-            "4. End task\n"
+            "1. There is a tab open enter the text prompt `{prompt}` and then submit it."
+            "2. Wait until the full response from the model is visible then store the response in responses."
+            "3. End task\n"
+        ),
+        "extended_system_prompt": (
+            "REMEMBER the most important RULE:"
+            "NEVER try to login try to avoid it if asked by the website"
         ),
     }
 
@@ -131,7 +134,8 @@ class BrowserUseGenerator(Generator):
         return [result]
 
     async def _run_one_agent(self, task_text: str, page, initial_actions: List[dict]) -> List[str]:
-        agent = Agent(task=task_text, llm=self.llm, page=page, initial_actions=initial_actions)
+        controller = Controller(output_model=Responses)
+        agent = Agent(task=task_text, llm=self.llm, page=page, initial_actions=initial_actions, controller=controller)
         history = await agent.run()
         return self._extract_text(history.final_result())
 
@@ -141,10 +145,9 @@ class BrowserUseGenerator(Generator):
         except Exception:
             # Very defensive: ensure we never raise due to bad template
             return (
-                f"1. Enter the text: \"{prompt_text}\"\n"
-                "2. Wait until the full response is visible\n"
-                "3. Store the response\n"
-                "4. End task\n"
+                f"1. There is a tab open enter the text prompt `{prompt_text}` and then submit it."
+                "2. Wait until the full response from the model is visible then store the response in responses.\n"
+                "3. End task\n"
             )
 
     def _call_model(
